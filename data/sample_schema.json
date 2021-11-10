@@ -1,0 +1,17 @@
+{
+    "options": {
+        "coding": {
+            "debugging": null,
+            "designing": null,
+            "implementing": null,
+            "writing_tests": {
+                "unit": null,
+                "integration": null
+            }
+        },
+        "meeting": {
+            "sprint": null,
+            "one_on_one": null
+        }
+    }
+}
