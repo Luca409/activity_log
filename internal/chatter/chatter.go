@@ -10,11 +10,14 @@ import (
 	"activity_log/internal/util"
 	"fmt"
 	"log"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
+
+const MaxLastRecordMinutesDefault = time.Hour
 
 type ChatterConfig struct {
 	ResponseWait        time.Duration
@@ -27,7 +30,8 @@ type Chatter struct {
 	userSchemaDAO dao.UserSchemaDAO
 	userDataDAO   dao.UserDataDAO
 
-	chatterConfig *ChatterConfig
+	chatterConfig  *ChatterConfig
+	lastRecordTime time.Time
 }
 
 func NewChatter(
@@ -43,10 +47,16 @@ func NewChatter(
 		userSchemaDAO: userSchemaDAO,
 		userDataDAO:   userDataDAO,
 		chatterConfig: chatterConfig,
+
+		lastRecordTime: time.Now(),
 	}
 }
 
 func (ctr *Chatter) Run() {
+	go ctr.setUpReminders()
+
+	time.Sleep(time.Second * time.Duration(3))
+
 	for {
 		if err := ctr.round(); err != nil {
 			log.Fatalf(err.Error())
@@ -55,6 +65,7 @@ func (ctr *Chatter) Run() {
 }
 
 func (ctr *Chatter) round() error {
+
 	userSchema, err := ctr.getUserSchema()
 	if err != nil {
 		return fmt.Errorf("failed to get user schema: %w", err)
@@ -116,6 +127,13 @@ func (ctr *Chatter) writeRound(path []string, expandingMap *util.ExpandingMap) e
 		}
 
 		// Record or add option.
+		if userInput.Text == "" {
+			if time.Since(ctr.lastRecordTime) > MaxLastRecordMinutesDefault {
+				return fmt.Errorf("time since last record is greater than %v, please specify minutes", MaxLastRecordMinutesDefault)
+			}
+			userInput.Text = fmt.Sprintf("%d", int(time.Since(ctr.lastRecordTime).Minutes()))
+		}
+
 		if digit, err := strconv.Atoi(userInput.Text); err == nil {
 			if err := ctr.recordValue(path, digit); err != nil {
 				return fmt.Errorf("recordValue() returns err: %v", err)
@@ -220,6 +238,8 @@ func (ctr *Chatter) recordValue(path []string, value int) error {
 		return fmt.Errorf("userDataDAO.Append() returns err: %w", err)
 	}
 
+	ctr.lastRecordTime = time.Now()
+
 	return nil
 }
 
@@ -268,4 +288,55 @@ func mapToOptions(subSchema map[string]interface{}) map[int]string {
 		counter++
 	}
 	return options
+}
+
+func (ctr *Chatter) setUpReminders() error {
+	if err := ctr.userMessenger.Send("How often, in minutes, would you like to be reminded to record activity? 0 for never."); err != nil {
+		log.Fatalf("userMessenger.Send() returns err: %v", err)
+	}
+
+	userInput, err := ctr.userListener.GetUserInput(
+		ctr.chatterConfig.ResponseWait,
+		ctr.chatterConfig.MaxConfusionRetries,
+		func(ui *constructs.UserInput) error {
+			if _, err := strconv.Atoi(ui.Text); err != nil {
+				return fmt.Errorf("input must be a digit")
+			}
+			return nil
+		},
+	)
+
+	if err != nil {
+		log.Fatalf("user input error: %v", err)
+	}
+
+	userDigit, err := strconv.Atoi(userInput.Text)
+	if err != nil {
+		log.Fatalf("user input error: %v", err)
+	}
+
+	if userDigit == 0 {
+		return nil
+	}
+
+	triggerReminderLoop(int64(userDigit))
+
+	return nil
+}
+
+func triggerReminderLoop(minutesToWait int64) {
+
+	for {
+		time.Sleep(time.Minute * time.Duration(minutesToWait))
+
+		cmd := exec.Command("/bin/sh", "internal/chatter/reminder.bash")
+		if err := cmd.Run(); err != nil {
+			// HACK
+			if strings.Contains(err.Error(), "already started") {
+				continue
+			}
+
+			log.Fatalf("Failed to execute reminder command: %v", err)
+		}
+	}
 }

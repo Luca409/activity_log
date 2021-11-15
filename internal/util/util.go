@@ -27,7 +27,7 @@ func NestedMapsEqual(lhs map[string]interface{}, rhs map[string]interface{}) err
 
 		valDict, ok := val.(map[string]interface{})
 		if ok {
-			otherValDict := val.(map[string]interface{})
+			otherValDict := otherVal.(map[string]interface{})
 			if err := NestedMapsEqual(valDict, otherValDict); err != nil {
 				return fmt.Errorf("maps differ at key %q: %w", key, err)
 			}

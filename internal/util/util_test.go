@@ -16,7 +16,7 @@ func TestNestedMapsEqual(t *testing.T) {
 			"JohnAndAnn": map[string]interface{}{
 				"Luke":  nil,
 				"Mark":  nil,
-				"Simon": 3,
+				"Simon": 3.0,
 			},
 		},
 	}
@@ -36,6 +36,27 @@ func TestNestedMapsEqual(t *testing.T) {
 
 	map1Copy["SomeoneElse"] = map[string]interface{}{"new": 5}
 	if err := util.NestedMapsEqual(map1, map1Copy); err == nil {
+		t.Fatalf("NestedMapsEqual() returns equal for two different maps")
+	}
+
+	sampleMap := map[string]interface{}{
+		"default": nil,
+		"working": map[string]interface{}{
+			"working":     nil,
+			"SideProject": nil,
+		},
+	}
+
+	editedMap := map[string]interface{}{
+		"default": nil,
+		"working": map[string]interface{}{
+			"working":     nil,
+			"SideProject": nil,
+			"MeetElise":   nil,
+		},
+	}
+
+	if err := util.NestedMapsEqual(sampleMap, editedMap); err == nil {
 		t.Fatalf("NestedMapsEqual() returns equal for two different maps")
 	}
 }
